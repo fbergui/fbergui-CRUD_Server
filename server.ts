@@ -1,4 +1,5 @@
 import http from "http";
+import https from "https";
 import url from "url";
 import fs from "fs";
 import dotenv from "dotenv";
@@ -6,30 +7,55 @@ import { MongoClient, ObjectId } from "mongodb";
 import express from "express";
 
 // config
-const PORT = 1337;
+const cors = require('cors')
+const HTTP_PORT = 1337;
+const HTTPS_PORT = 1338
 dotenv.config({ path: ".env" });
 const app = express();
 const connectionString: any = process.env.connectionString;
 const DBNAME = "5b";
+const whitelist = ["http://localhost:1337", "https://localhost:1338", "https://fberguis-server.onrender.com",
+  "https://cordovaapp"];
+const privateKey = fs.readFileSync("keys/privateKey.pem", "utf8");
+const certificate = fs.readFileSync("keys/certificate.crt", "utf8");
+const credentials = { "key": privateKey, "cert": certificate };
 
 //CREAZIONE E AVVIO DEL SERVER HTTP
-let server = http.createServer(app);
-let paginaErrore: string = "";
 
-server.listen(PORT, () => {
+let httpServer = http.createServer(app);
+httpServer.listen(HTTP_PORT, () => {
   init();
-  console.log("Server in ascolto sulla porta " + PORT);
 });
 
+let httpsServer = https.createServer(credentials, app);
+httpsServer.listen(HTTPS_PORT, function () {
+  console.log("Server in ascolto sulle porte HTTP:" + HTTP_PORT + ", HTTPS:" + HTTPS_PORT);
+});
+
+let paginaErrore: string = "";
 function init() {
-  fs.readFile("./static/error.html", (err: any, data: any) => {
-    if (err) {
-      paginaErrore = "<h2>Risorsa non trovata</h2>";
-    } else {
+  fs.readFile("./static/error.html", function (err: any, data: any) {
+    if (!err)
       paginaErrore = data.toString();
-    }
+    else
+      paginaErrore = "<h1>Risorsa non trovata</h1>"
   });
 }
+
+const corsOptions = {
+  origin: function (origin: any, callback: any) {
+    if (!origin) // browser direct call
+      return callback(null, true);
+    if (whitelist.indexOf(origin) === -1) {
+      var msg = `The CORS policy for this site does not
+ allow access from the specified Origin.`
+      return callback(new Error(msg), false);
+    }
+    else
+      return callback(null, true);
+  },
+  credentials: true
+};
 
 /***********MIDDLEWARE****************/
 // 1 request log
@@ -57,6 +83,7 @@ app.use("/", (req: any, res: any, next: any) => {
   }
   next();
 });
+app.use("/", cors(corsOptions));
 
 // Apertura della connessione
 app.use("/api/", (req: any, res: any, next: any) => {
